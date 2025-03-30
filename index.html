@@ -8,32 +8,20 @@
     <style>
         body { background-color: #f8f9fa; padding: 20px; }
         .container { max-width: 800px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 30px; margin-top: 30px; }
-        .result-item { font-family: monospace; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .result-item { padding: 10px 0; border-bottom: 1px solid #eee; }
         .exists { color: #28a745; }
         .not-exists { color: #dc3545; }
         #loading { display: none; margin-left: 10px; }
         .btn-group { margin-bottom: 20px; }
         .source-selector { margin-bottom: 15px; }
         .source-badge { font-size: 0.8em; margin-left: 5px; }
-        .query-info { font-size: 0.8em; color: #6c757d; }
-        .format-suggestion { font-size: 0.8em; color: #ffc107; }
+        .query-info { font-size: 0.8em; color: #6c757d; margin-top: 3px; }
+        .result-row { display: flex; }
+        .result-name { min-width: 180px; font-family: monospace; word-break: break-word; }
+        .result-status { flex-grow: 1; }
         .copy-btn { 
-            padding: 0 5px; 
-            margin-left: 5px; 
-            line-height: 1;
-            font-size: 0.8em;
-            vertical-align: middle;
-            border: none;
-            background: none;
-        }
-        .result-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .result-name {
-            min-width: 200px;
-            word-break: break-all;
+            background: none; border: none; padding: 0 5px;
+            font-size: 0.9em; margin-left: 5px;
         }
     </style>
 </head>
@@ -56,9 +44,9 @@
         
         <div class="mb-3">
             <label class="form-label">输入 geosite 名称（多个用逗号/空格分隔）：</label>
-            <textarea id="geositeInput" class="form-control" rows="3" placeholder="例如：googledrive, GitHub-zh, AMAZON_CN"></textarea>
+            <textarea id="geositeInput" class="form-control" rows="3" placeholder="例如：onedrive, GitHub, AMAZON"></textarea>
             <div class="query-info mt-1">
-                v2fly: 自动转为小写 | Clash: 智能格式转换（支持特殊字符处理）
+                v2fly: 自动转为小写 | Clash: 原始 → 驼峰 → 首字母大写 → 全大写 → 全小写
             </div>
         </div>
         
@@ -83,11 +71,15 @@
                 baseUrl: "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/",
                 info: "v2fly/domain-list-community",
                 check: async function(name) {
+                    const queryName = name.toLowerCase();
                     try {
-                        const response = await fetch(`${this.baseUrl}${name.toLowerCase()}`, { method: 'HEAD' });
-                        return response.ok;
+                        const response = await fetch(`${this.baseUrl}${queryName}`, { method: 'HEAD' });
+                        return {
+                            exists: response.ok,
+                            matchedFormat: queryName // 始终返回小写
+                        };
                     } catch {
-                        return false;
+                        return { exists: false, matchedFormat: queryName };
                     }
                 }
             },
@@ -95,31 +87,17 @@
                 name: "Clash",
                 baseUrl: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/",
                 info: "blackmatrix7/ios_rule_script (Clash)",
-                check: async function(name) {
-                    // 智能格式生成器
-                    const generateFormats = (input) => {
-                        const cleaned = input.replace(/[^a-z0-9-_]/gi, '');
-                        
-                        // 基础格式转换
-                        const formats = [
-                            cleaned, // 原始输入
-                            cleaned.toUpperCase(), // 全大写
-                            cleaned.toLowerCase(), // 全小写
-                            cleaned.replace(/(?:^|-|_)(\w)/g, (_, c) => c.toUpperCase()) // 驼峰式
-                        ];
+                check: async function(originalName) {
+                    // 新顺序：原始 → 驼峰 → 首字母大写 → 全大写 → 全小写
+                    const formatsToTry = [
+                        originalName, // 原始输入
+                        originalName.replace(/[-_](.)/g, (_, c) => c.toUpperCase()), // 驼峰式
+                        originalName.charAt(0).toUpperCase() + originalName.slice(1).toLowerCase(), // 首字母大写
+                        originalName.toUpperCase(), // 全大写
+                        originalName.toLowerCase() // 全小写
+                    ].filter((v, i, a) => a.indexOf(v) === i); // 去重
 
-                        // 添加首字母大写格式
-                        formats.push(
-                            cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase()
-                        );
-
-                        // 去重并过滤空值
-                        return [...new Set(formats)].filter(Boolean);
-                    };
-
-                    const formatsToTry = generateFormats(name);
-                    
-                    // 尝试所有可能的格式
+                    // 尝试所有格式
                     for (const format of formatsToTry) {
                         try {
                             const path = `${format}/${format}.list`;
@@ -127,19 +105,17 @@
                             if (response.ok) {
                                 return {
                                     exists: true,
-                                    matchedFormat: format,
-                                    path: path
+                                    matchedFormat: format // 返回实际匹配的源格式
                                 };
                             }
-                        } catch (error) {
+                        } catch {
                             continue;
                         }
                     }
                     
-                    // 返回建议格式（驼峰式优先）
                     return {
                         exists: false,
-                        suggestedFormat: formatsToTry.find(f => /^[A-Z][a-z]+([A-Z][a-z]+)*$/.test(f)) || formatsToTry[0]
+                        matchedFormat: formatsToTry[0] // 返回第一个尝试格式作为建议
                     };
                 }
             }
@@ -172,75 +148,42 @@
             this.disabled = true;
 
             try {
-                const queries = names.map(name => {
-                    if (currentSource === sources.v2fly) {
-                        return sources.v2fly.check(name)
-                            .then(exists => ({ 
-                                name,
-                                exists,
-                                type: 'v2fly' 
-                            }));
-                    } else {
-                        return sources.clash.check(name)
-                            .then(result => ({
-                                name,
-                                ...result,
-                                type: 'clash'
-                            }));
-                    }
-                });
+                const results = await Promise.all(
+                    names.map(name => currentSource.check(name))
+                );
 
-                const results = await Promise.all(queries);
-
-                results.forEach(result => {
+                results.forEach((result, index) => {
                     const div = document.createElement('div');
                     div.className = 'result-item';
                     
-                    let statusHtml = '';
-                    if (result.type === 'clash') {
-                        statusHtml = result.exists ? `
-                            <span class="exists">✓ 存在</span>
-                            <div class="query-info">匹配路径: ${result.path}</div>
-                        ` : `
-                            <span class="not-exists">✗ 不存在</span>
-                            <div class="format-suggestion">
-                                建议格式: ${result.suggestedFormat}
-                                <button class="copy-btn" data-format="${result.suggestedFormat}" title="复制格式">
-                                    📋
-                                </button>
-                            </div>
-                        `;
-                    } else {
-                        statusHtml = result.exists ? `
-                            <span class="exists">✓ 存在</span>
-                        ` : `
-                            <span class="not-exists">✗ 不存在</span>
-                        `;
-                    }
-
                     div.innerHTML = `
                         <div class="result-row">
-                            <span class="result-name">${result.name}</span>
-                            <div>
-                                ${statusHtml}
+                            <div class="result-name">${names[index]}</div>
+                            <div class="result-status">
+                                <span class="${result.exists ? 'exists' : 'not-exists'}">
+                                    ${result.exists ? '✓ 存在' : '✗ 不存在'}
+                                </span>
                                 <small class="text-muted">(${currentSource.name})</small>
+                                ${result.exists ? `
+                                    <div class="query-info">匹配格式: ${result.matchedFormat}</div>
+                                ` : `
+                                    <div class="query-info">
+                                        建议尝试: ${result.matchedFormat}
+                                        <button class="copy-btn" data-format="${result.matchedFormat}" title="复制">📋</button>
+                                    </div>
+                                `}
                             </div>
                         </div>
                     `;
                     resultsDiv.appendChild(div);
                 });
 
-                // 添加复制按钮功能
+                // 复制按钮功能
                 document.querySelectorAll('.copy-btn').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        const format = e.target.dataset.format;
-                        navigator.clipboard.writeText(format).then(() => {
-                            const originalText = e.target.innerHTML;
-                            e.target.innerHTML = '✓ 已复制';
-                            setTimeout(() => {
-                                e.target.innerHTML = originalText;
-                            }, 1000);
-                        });
+                    btn.addEventListener('click', function() {
+                        navigator.clipboard.writeText(this.dataset.format);
+                        this.textContent = '✓';
+                        setTimeout(() => this.textContent = '📋', 1000);
                     });
                 });
 
