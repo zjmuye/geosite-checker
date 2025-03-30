@@ -29,19 +29,58 @@
             display: none;
             margin-left: 10px;
         }
+        .btn-group {
+            margin-bottom: 20px;
+        }
+        .source-selector {
+            margin-bottom: 15px;
+        }
+        .source-badge {
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+        .btn-check:checked + .btn-outline-primary {
+            background-color: #0d6efd;
+            color: white;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1 class="text-center mb-4">Geosite 在线查询工具</h1>
+        
+        <div class="source-selector">
+            <label class="form-label">选择数据源：</label>
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="source" id="sourcePassWall" autocomplete="off" checked>
+                <label class="btn btn-outline-primary" for="sourcePassWall">PassWall</label>
+                
+                <input type="radio" class="btn-check" name="source" id="sourceV2fly" autocomplete="off">
+                <label class="btn btn-outline-primary" for="sourceV2fly">v2fly</label>
+                
+                <input type="radio" class="btn-check" name="source" id="sourceClash" autocomplete="off">
+                <label class="btn btn-outline-primary" for="sourceClash">Clash</label>
+            </div>
+            <div class="mt-2">
+                <span class="badge bg-info source-badge" id="sourceInfo">数据源: Loyalsoldier/v2ray-rules-dat</span>
+            </div>
+        </div>
+        
         <div class="mb-3">
             <label class="form-label">输入 geosite 名称（多个用逗号/空格分隔）：</label>
             <textarea id="geositeInput" class="form-control" rows="3" placeholder="例如：google, netflix, twitter"></textarea>
         </div>
-        <button id="checkBtn" class="btn btn-primary">
-            查询
-            <span id="loading" class="spinner-border spinner-border-sm"></span>
-        </button>
+        
+        <div class="btn-group">
+            <button id="checkBtn" class="btn btn-primary">
+                查询
+                <span id="loading" class="spinner-border spinner-border-sm"></span>
+            </button>
+            <button id="clearBtn" class="btn btn-outline-secondary">
+                清空
+            </button>
+        </div>
+        
         <div class="mt-4">
             <h5>查询结果：</h5>
             <div id="results"></div>
@@ -49,6 +88,46 @@
     </div>
 
     <script>
+        // 数据源配置
+        const sources = {
+            passwall: {
+                name: "PassWall",
+                baseUrl: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/",
+                info: "Loyalsoldier/v2ray-rules-dat",
+                fileExt: ""
+            },
+            v2fly: {
+                name: "v2fly",
+                baseUrl: "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/",
+                info: "v2fly/domain-list-community",
+                fileExt: ""
+            },
+            clash: {
+                name: "Clash",
+                baseUrl: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/",
+                info: "blackmatrix7/ios_rule_script (Clash)",
+                fileExt: ".yaml"
+            }
+        };
+
+        // 当前选中的数据源（默认PassWall）
+        let currentSource = sources.passwall;
+
+        // 初始化数据源选择
+        document.querySelectorAll('input[name="source"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.id === 'sourcePassWall') {
+                    currentSource = sources.passwall;
+                } else if (this.id === 'sourceV2fly') {
+                    currentSource = sources.v2fly;
+                } else if (this.id === 'sourceClash') {
+                    currentSource = sources.clash;
+                }
+                document.getElementById('sourceInfo').textContent = `数据源: ${currentSource.info}`;
+            });
+        });
+
+        // 查询功能
         document.getElementById('checkBtn').addEventListener('click', async function() {
             const input = document.getElementById('geositeInput').value.trim();
             if (!input) {
@@ -78,6 +157,7 @@
                         <span class="${exists ? 'exists' : 'not-exists'}">
                             ${exists ? '✓ 存在' : '✗ 不存在'}
                         </span>
+                        ${exists ? `<small class="text-muted">(${currentSource.name})</small>` : ''}
                     `;
                     resultsDiv.appendChild(div);
                 });
@@ -89,12 +169,25 @@
             }
         });
 
+        // 清空功能
+        document.getElementById('clearBtn').addEventListener('click', function() {
+            document.getElementById('geositeInput').value = '';
+            document.getElementById('results').innerHTML = '';
+        });
+
+        // 检查geosite是否存在
         async function checkGeosite(name) {
             try {
-                const response = await fetch(
-                    `https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/${name}`,
-                    { method: 'HEAD' }
-                );
+                let url;
+                if (currentSource === sources.clash) {
+                    // Clash的特殊处理
+                    url = `${currentSource.baseUrl}${name}/${name}${currentSource.fileExt}`;
+                } else {
+                    // PassWall和v2fly的处理
+                    url = `${currentSource.baseUrl}${name}${currentSource.fileExt}`;
+                }
+                
+                const response = await fetch(url, { method: 'HEAD' });
                 return response.ok;
             } catch {
                 return false;
