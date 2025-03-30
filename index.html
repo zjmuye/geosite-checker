@@ -1,215 +1,42 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Geosite 在线查询工具</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
-    <style>
-        /* 保持原有样式不变 */
-        body { background-color: #f8f9fa; padding: 20px; }
-        .container { max-width: 800px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); padding: 30px; margin-top: 30px; }
-        .result-item { font-family: monospace; padding: 8px 0; border-bottom: 1px solid #eee; }
-        .exists { color: #28a745; }
-        .not-exists { color: #dc3545; }
-        #loading { display: none; margin-left: 10px; }
-        .btn-group { margin-bottom: 20px; }
-        .source-selector { margin-bottom: 15px; }
-        .source-badge { font-size: 0.8em; margin-left: 5px; }
-        .btn-check:checked + .btn-outline-primary { background-color: #0d6efd; color: white; }
-        .query-info { font-size: 0.8em; color: #6c757d; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1 class="text-center mb-4">Geosite 在线查询工具</h1>
-        
-        <div class="source-selector">
-            <label class="form-label">选择数据源：</label>
-            <div class="btn-group" role="group">
-                <input type="radio" class="btn-check" name="source" id="sourceV2fly" autocomplete="off" checked>
-                <label class="btn btn-outline-primary" for="sourceV2fly">v2fly</label>
-                <input type="radio" class="btn-check" name="source" id="sourceClash" autocomplete="off">
-                <label class="btn btn-outline-primary" for="sourceClash">Clash</label>
-            </div>
-            <div class="mt-2">
-                <span class="badge bg-info source-badge" id="sourceInfo">数据源: v2fly/domain-list-community</span>
-            </div>
-        </div>
-        
-        <div class="mb-3">
-            <label class="form-label">输入 geosite 名称（多个用逗号/空格分隔）：</label>
-            <textarea id="geositeInput" class="form-control" rows="3" placeholder="例如：googledrive, GitHub, AMAZONCN"></textarea>
-            <div class="query-info mt-1">
-                v2fly: 自动转为小写 | Clash: 优先标准格式(如GoogleDrive)，兼容其他格式
-            </div>
-        </div>
-        
-        <div class="btn-group">
-            <button id="checkBtn" class="btn btn-primary">
-                查询 <span id="loading" class="spinner-border spinner-border-sm"></span>
-            </button>
-            <button id="clearBtn" class="btn btn-outline-secondary">清空</button>
-        </div>
-        
-        <div class="mt-4">
-            <h5>查询结果：</h5>
-            <div id="results"></div>
-        </div>
-    </div>
-
-    <script>
-        // 标准格式映射表（全小写 → 标准格式）
-        const STANDARD_FORMATS = {
-            'amazoncn': 'AmazonCN',
-            'oracle': 'Oracle',
-            'amazon': 'Amazon',
-            'github': 'GitHub',
-            'gitlab': 'GitLab',
-            'google': 'Google',
-            'googledrive': 'GoogleDrive',
-            'googlevoice': 'GoogleVoice',
-            'onedrive': 'OneDrive',
-            'bardai': 'BardAI',
-            'bing': 'Bing',
-            'claude': 'Claude',
-            'copilot': 'Copilot',
-            'gemini': 'Gemini',
-            'openai': 'OpenAI',
-            'facebook': 'Facebook',
-            'instagram': 'Instagram',
-            'paypal': 'PayPal',
-            'telegram': 'Telegram',
-            'twitter': 'Twitter',
-            'whatsapp': 'Whatsapp',
-            'bilibiliintl': 'BiliBiliIntl',
-            'disney': 'Disney',
-            'netflix': 'Netflix',
-            'tiktok': 'TikTok',
-            'youtube': 'YouTube',
-            'binance': 'Binance',
-            'okx': 'OKX'
-        };
-
-        // 数据源配置
-        const sources = {
-            v2fly: {
-                name: "v2fly",
-                baseUrl: "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/",
-                info: "v2fly/domain-list-community",
-                check: async function(name) {
-                    try {
-                        const response = await fetch(`${this.baseUrl}${name.toLowerCase()}`, { method: 'HEAD' });
-                        return response.ok;
-                    } catch {
-                        return false;
-                    }
-                }
-            },
-            clash: {
-                name: "Clash",
-                baseUrl: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/",
-                info: "blackmatrix7/ios_rule_script (Clash)",
-                check: async function(name) {
-                    const lowerName = name.toLowerCase();
-                    const standardName = STANDARD_FORMATS[lowerName] || 
-                                       (lowerName.charAt(0).toUpperCase() + lowerName.slice(1));
-                    
-                    // 尝试顺序：标准格式 → 原始格式 → 全大写
-                    const formatsToTry = [
-                        standardName,
-                        name, // 原始输入
-                        name.toUpperCase()
-                    ];
-
-                    // 去重
-                    const uniqueFormats = [...new Set(formatsToTry)];
-
-                    for (const format of uniqueFormats) {
-                        try {
-                            const response = await fetch(`${this.baseUrl}${format}/${format}.list`, { method: 'HEAD' });
-                            if (response.ok) return true;
-                        } catch {
-                            continue;
-                        }
-                    }
+<script>
+    // Clash 查询逻辑修改：尝试不同格式
+    const sources = {
+        v2fly: {
+            name: "v2fly",
+            baseUrl: "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/",
+            info: "v2fly/domain-list-community",
+            check: async function(name) {
+                try {
+                    const response = await fetch(`${this.baseUrl}${name.toLowerCase()}`, { method: 'HEAD' });
+                    return response.ok;
+                } catch {
                     return false;
                 }
             }
-        };
+        },
+        clash: {
+            name: "Clash",
+            baseUrl: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/",
+            info: "blackmatrix7/ios_rule_script (Clash)",
+            check: async function(name) {
+                const lowerName = name.toLowerCase();
+                const capitalizedName = lowerName.replace(/\b\w/g, c => c.toUpperCase()); // GoogleVoice
+                const firstUpperCase = lowerName.charAt(0).toUpperCase() + lowerName.slice(1); // Googlevoice
+                const upperName = name.toUpperCase(); // GOOGLEVOICE
 
-        // 当前选中的数据源（默认v2fly）
-        let currentSource = sources.v2fly;
+                // 按顺序尝试不同格式
+                const formatsToTry = [capitalizedName, firstUpperCase, name, upperName];
 
-        // 初始化数据源选择
-        document.querySelectorAll('input[name="source"]').forEach(radio => {
-            radio.addEventListener('change', function() {
-                if (this.id === 'sourceV2fly') {
-                    currentSource = sources.v2fly;
-                } else if (this.id === 'sourceClash') {
-                    currentSource = sources.clash;
-                }
-                document.getElementById('sourceInfo').textContent = `数据源: ${currentSource.info}`;
-            });
-        });
-
-        // 查询功能
-        document.getElementById('checkBtn').addEventListener('click', async function() {
-            const input = document.getElementById('geositeInput').value.trim();
-            if (!input) {
-                alert('请输入要查询的 geosite 名称');
-                return;
-            }
-
-            const names = input.split(/[, \n]+/).filter(name => name.trim());
-            if (names.length === 0) return;
-
-            const resultsDiv = document.getElementById('results');
-            resultsDiv.innerHTML = '';
-            document.getElementById('loading').style.display = 'inline-block';
-            this.disabled = true;
-
-            try {
-                const results = await Promise.all(
-                    names.map(name => currentSource.check(name))
-                );
-
-                const maxLen = Math.max(...names.map(name => name.length));
-                results.forEach((exists, index) => {
-                    const div = document.createElement('div');
-                    div.className = 'result-item';
-                    
-                    // 获取实际查询格式（显示最优匹配）
-                    let actualFormat = names[index];
-                    if (currentSource === sources.clash) {
-                        const lowerName = names[index].toLowerCase();
-                        actualFormat = STANDARD_FORMATS[lowerName] || 
-                                     (lowerName.charAt(0).toUpperCase() + lowerName.slice(1));
+                for (const format of formatsToTry) {
+                    try {
+                        const response = await fetch(`${this.baseUrl}${format}/${format}.list`, { method: 'HEAD' });
+                        if (response.ok) return true;
+                    } catch {
+                        continue;
                     }
-
-                    div.innerHTML = `
-                        ${names[index].padEnd(maxLen)} : 
-                        <span class="${exists ? 'exists' : 'not-exists'}">
-                            ${exists ? '✓ 存在' : '✗ 不存在'}
-                        </span>
-                        <small class="text-muted">(${currentSource.name})</small>
-                        ${exists ? `<div class="query-info">最佳匹配格式: ${actualFormat}/${actualFormat}.list</div>` : ''}
-                    `;
-                    resultsDiv.appendChild(div);
-                });
-            } catch (error) {
-                resultsDiv.innerHTML = `<div class="alert alert-danger">查询失败: ${error.message}</div>`;
-            } finally {
-                document.getElementById('loading').style.display = 'none';
-                this.disabled = false;
+                }
+                return false;
             }
-        });
-
-        // 清空功能
-        document.getElementById('clearBtn').addEventListener('click', function() {
-            document.getElementById('geositeInput').value = '';
-            document.getElementById('results').innerHTML = '';
-        });
-    </script>
-</body>
-</html>
+        }
+    };
+</script>
