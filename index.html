@@ -94,19 +94,19 @@
                 name: "PassWall",
                 baseUrl: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/",
                 info: "Loyalsoldier/v2ray-rules-dat",
-                fileExt: ""
+                filePath: (name) => `${name}`
             },
             v2fly: {
                 name: "v2fly",
                 baseUrl: "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/",
                 info: "v2fly/domain-list-community",
-                fileExt: ""
+                filePath: (name) => `${name}`
             },
             clash: {
                 name: "Clash",
                 baseUrl: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/",
                 info: "blackmatrix7/ios_rule_script (Clash)",
-                fileExt: ".yaml"
+                filePath: (name) => `${name}/${name}.list`
             }
         };
 
@@ -178,16 +178,20 @@
         // 检查geosite是否存在
         async function checkGeosite(name) {
             try {
-                let url;
+                const url = `${currentSource.baseUrl}${currentSource.filePath(name)}`;
+                const response = await fetch(url, { method: 'HEAD' });
+                
+                // 对于Clash规则，即使返回404也可能是有效的（因为有可能是空规则）
                 if (currentSource === sources.clash) {
-                    // Clash的特殊处理
-                    url = `${currentSource.baseUrl}${name}/${name}${currentSource.fileExt}`;
-                } else {
-                    // PassWall和v2fly的处理
-                    url = `${currentSource.baseUrl}${name}${currentSource.fileExt}`;
+                    // 尝试获取实际内容确认
+                    const contentResponse = await fetch(url);
+                    if (contentResponse.ok) {
+                        const content = await contentResponse.text();
+                        return content.trim().length > 0;
+                    }
+                    return false;
                 }
                 
-                const response = await fetch(url, { method: 'HEAD' });
                 return response.ok;
             } catch {
                 return false;
