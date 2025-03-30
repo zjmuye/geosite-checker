@@ -43,10 +43,6 @@
             background-color: #0d6efd;
             color: white;
         }
-        .query-info {
-            font-size: 0.8em;
-            color: #6c757d;
-        }
     </style>
 </head>
 <body>
@@ -61,9 +57,6 @@
                 
                 <input type="radio" class="btn-check" name="source" id="sourceClash" autocomplete="off">
                 <label class="btn btn-outline-primary" for="sourceClash">Clash</label>
-                
-                <input type="radio" class="btn-check" name="source" id="sourcePassWall" autocomplete="off">
-                <label class="btn btn-outline-primary" for="sourcePassWall">PassWall</label>
             </div>
             <div class="mt-2">
                 <span class="badge bg-info source-badge" id="sourceInfo">数据源: v2fly/domain-list-community</span>
@@ -73,7 +66,6 @@
         <div class="mb-3">
             <label class="form-label">输入 geosite 名称（多个用逗号/空格分隔）：</label>
             <textarea id="geositeInput" class="form-control" rows="3" placeholder="例如：google, netflix, twitter"></textarea>
-            <div class="query-info mt-1">注意：查询时自动转为小写</div>
         </div>
         
         <div class="btn-group">
@@ -93,16 +85,15 @@
     </div>
 
     <script>
-        // 数据源配置（已验证）
+        // 数据源配置
         const sources = {
             v2fly: {
                 name: "v2fly",
                 baseUrl: "https://raw.githubusercontent.com/v2fly/domain-list-community/master/data/",
                 info: "v2fly/domain-list-community",
                 check: async function(name) {
-                    const lowerName = name.toLowerCase();
                     try {
-                        const response = await fetch(`${this.baseUrl}${lowerName}`, { method: 'HEAD' });
+                        const response = await fetch(`${this.baseUrl}${name.toLowerCase()}`, { method: 'HEAD' });
                         return response.ok;
                     } catch {
                         return false;
@@ -114,42 +105,9 @@
                 baseUrl: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/",
                 info: "blackmatrix7/ios_rule_script (Clash)",
                 check: async function(name) {
-                    const lowerName = name.toLowerCase();
                     try {
-                        // 先尝试 .list 文件
-                        const listResponse = await fetch(`${this.baseUrl}${lowerName}/${lowerName}.list`);
-                        if (listResponse.ok) {
-                            const content = await listResponse.text();
-                            if (content.trim().length > 0) return true;
-                        }
-                        
-                        // 如果 .list 不存在或为空，尝试 .yaml
-                        const yamlResponse = await fetch(`${this.baseUrl}${lowerName}/${lowerName}.yaml`);
-                        if (yamlResponse.ok) {
-                            const content = await yamlResponse.text();
-                            return content.trim().length > 0;
-                        }
-                        
-                        return false;
-                    } catch {
-                        return false;
-                    }
-                }
-            },
-            passwall: {
-                name: "PassWall",
-                baseUrl: "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/",
-                info: "Loyalsoldier/v2ray-rules-dat",
-                check: async function(name) {
-                    const lowerName = name.toLowerCase();
-                    try {
-                        // PassWall 规则存储在 geosite 文件中，验证特定规则是否存在
-                        const response = await fetch(`${this.baseUrl}geosite`, { method: 'HEAD' });
-                        if (!response.ok) return false;
-                        
-                        // 由于无法直接查询 .dat 文件内容，假设规则存在（实际使用时可能需要更复杂的解析）
-                        // 这里简化处理，认为所有查询的规则都存在（实际项目中需要后端支持或预加载规则列表）
-                        return true;
+                        const response = await fetch(`${this.baseUrl}${name}/${name}.list`, { method: 'HEAD' });
+                        return response.ok;
                     } catch {
                         return false;
                     }
@@ -167,8 +125,6 @@
                     currentSource = sources.v2fly;
                 } else if (this.id === 'sourceClash') {
                     currentSource = sources.clash;
-                } else if (this.id === 'sourcePassWall') {
-                    currentSource = sources.passwall;
                 }
                 document.getElementById('sourceInfo').textContent = `数据源: ${currentSource.info}`;
             });
@@ -205,7 +161,6 @@
                             ${exists ? '✓ 存在' : '✗ 不存在'}
                         </span>
                         <small class="text-muted">(${currentSource.name})</small>
-                        ${exists ? `<div class="query-info">实际查询: ${names[index].toLowerCase()}</div>` : ''}
                     `;
                     resultsDiv.appendChild(div);
                 });
